@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.4.22 <0.9.0;
-import "../token/ERC20/extensions/ERC20Burnable.sol";
-import "../lib/AdminRole.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "./lib/AdminRole.sol";
 
 contract YNCCoin is ERC20Burnable, AdminRole {
     constructor(string memory name_, string memory symbol_)
