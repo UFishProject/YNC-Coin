@@ -1,0 +1,2 @@
+# YNC-Coin
+YNC-ERC20合约
