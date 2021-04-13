@@ -1,19 +1,17 @@
-// SPDX-License-Identifier: MIT
+//SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.3;
-
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./lib/AdminRole.sol";
-import "./interfaces/IRewardDistributionRecipient.sol";
 
-contract LPTokenWrapper {
+contract TokenWrapper {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    IERC20 public lpt;
+    IERC20 public anyToken;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
@@ -29,34 +27,30 @@ contract LPTokenWrapper {
     function stake(uint256 amount) public virtual {
         _totalSupply = _totalSupply.add(amount);
         _balances[msg.sender] = _balances[msg.sender].add(amount);
-        lpt.safeTransferFrom(msg.sender, address(this), amount);
+        anyToken.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     function withdraw(uint256 amount) public virtual {
         _totalSupply = _totalSupply.sub(amount);
         _balances[msg.sender] = _balances[msg.sender].sub(amount);
-        lpt.safeTransfer(msg.sender, amount);
+        anyToken.safeTransfer(msg.sender, amount);
     }
 }
 
-contract YncRewardPool is
-    LPTokenWrapper,
-    IRewardDistributionRecipient,
-    AdminRole
-{
+contract MiningPool is TokenWrapper, AdminRole {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-    IERC20 public Ync;
-    uint256 public constant DURATION = 30 days; //days
-
-    uint256 public initreward;
-    uint256 public starttime; // starttime TBD
+    IERC20 public yncTken;
+    uint256 public duration;
+    uint256 public starttime;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
+    bool public isEnabled = true;
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
+    mapping(address => uint256) public deposits;
 
     event RewardAdded(uint256 reward);
     event Staked(address indexed user, uint256 amount);
@@ -64,18 +58,24 @@ contract YncRewardPool is
     event RewardPaid(address indexed user, uint256 reward);
 
     constructor(
-        address Ync_,
-        address lptoken_,
-        uint256 initreward_,
+        address yncToken_,
+        address anyToken_,
+        uint256 reward,
+        uint256 duration_,
         uint256 starttime_
     ) {
-        Ync = IERC20(Ync_);
-        lpt = IERC20(lptoken_);
+        yncTken = IERC20(yncToken_);
+        anyToken = IERC20(anyToken_);
         starttime = starttime_;
-        initreward = initreward_;
+        duration = duration_ * 86400;
+        rewardRate = reward.div(duration);
         lastUpdateTime = starttime;
-        rewardRate = initreward.div(DURATION);
-        periodFinish = starttime.add(DURATION);
+        periodFinish = starttime.add(duration);
+    }
+
+    modifier checkStart() {
+        require(block.timestamp >= starttime, "MiningPool: not start");
+        _;
     }
 
     modifier updateReward(address account) {
@@ -88,6 +88,10 @@ contract YncRewardPool is
         _;
     }
 
+    function enabled() public pure returns (bool) {
+        return true;
+    }
+
     function lastTimeRewardApplicable() public view returns (uint256) {
         return Math.min(block.timestamp, periodFinish);
     }
@@ -96,6 +100,11 @@ contract YncRewardPool is
         if (totalSupply() == 0) {
             return rewardPerTokenStored;
         }
+
+        if (!enabled()) {
+            return rewardPerTokenStored;
+        }
+
         return
             rewardPerTokenStored.add(
                 lastTimeRewardApplicable()
@@ -119,10 +128,12 @@ contract YncRewardPool is
         public
         override
         updateReward(msg.sender)
-        checkhalve
         checkStart
     {
-        require(amount > 0, "YncRewardPool: Cannot stake 0");
+        require(amount > 0, "MiningPool: Cannot stake 0");
+        uint256 newDeposit = deposits[msg.sender].add(amount);
+
+        deposits[msg.sender] = newDeposit;
         super.stake(amount);
         emit Staked(msg.sender, amount);
     }
@@ -131,10 +142,10 @@ contract YncRewardPool is
         public
         override
         updateReward(msg.sender)
-        checkhalve
         checkStart
     {
-        require(amount > 0, "YncRewardPool: Cannot withdraw 0");
+        require(amount > 0, "MiningPool: Cannot withdraw 0");
+        deposits[msg.sender] = deposits[msg.sender].sub(amount);
         super.withdraw(amount);
         emit Withdrawn(msg.sender, amount);
     }
@@ -144,53 +155,16 @@ contract YncRewardPool is
         getReward();
     }
 
-    function getReward() public updateReward(msg.sender) checkhalve checkStart {
+    function getReward() public updateReward(msg.sender) checkStart {
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
             rewards[msg.sender] = 0;
-            Ync.safeTransfer(msg.sender, reward);
+            yncTken.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
         }
     }
 
-    modifier checkhalve() {
-        if (block.timestamp >= periodFinish) {
-            initreward = initreward.mul(90).div(100);
-
-            rewardRate = initreward.div(DURATION);
-            periodFinish = block.timestamp.add(DURATION);
-            emit RewardAdded(initreward);
-        }
-        _;
-    }
-
-    modifier checkStart() {
-        require(block.timestamp >= starttime, "YncRewardPool: not start");
-        _;
-    }
-
-    function notifyRewardAmount(uint256 reward)
-        external
-        override
-        onlyRewardDistribution
-        updateReward(address(0))
-    {
-        if (block.timestamp > starttime) {
-            if (block.timestamp >= periodFinish) {
-                rewardRate = reward.div(DURATION);
-            } else {
-                uint256 remaining = periodFinish.sub(block.timestamp);
-                uint256 leftover = remaining.mul(rewardRate);
-                rewardRate = reward.add(leftover).div(DURATION);
-            }
-            lastUpdateTime = block.timestamp;
-            periodFinish = block.timestamp.add(DURATION);
-            emit RewardAdded(reward);
-        } else {
-            rewardRate = initreward.div(DURATION);
-            lastUpdateTime = starttime;
-            periodFinish = starttime.add(DURATION);
-            emit RewardAdded(reward);
-        }
+    function updateStartTime(uint256 starttime_) external onlyAdmin {
+        starttime = starttime_;
     }
 }
