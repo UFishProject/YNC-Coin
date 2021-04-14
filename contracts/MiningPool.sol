@@ -50,7 +50,6 @@ contract MiningPool is TokenWrapper, AdminRole {
     bool public isEnabled = true;
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
-    mapping(address => uint256) public deposits;
 
     event RewardAdded(uint256 reward);
     event Staked(address indexed user, uint256 amount);
@@ -131,9 +130,6 @@ contract MiningPool is TokenWrapper, AdminRole {
         checkStart
     {
         require(amount > 0, "MiningPool: Cannot stake 0");
-        uint256 newDeposit = deposits[msg.sender].add(amount);
-
-        deposits[msg.sender] = newDeposit;
         super.stake(amount);
         emit Staked(msg.sender, amount);
     }
@@ -145,7 +141,6 @@ contract MiningPool is TokenWrapper, AdminRole {
         checkStart
     {
         require(amount > 0, "MiningPool: Cannot withdraw 0");
-        deposits[msg.sender] = deposits[msg.sender].sub(amount);
         super.withdraw(amount);
         emit Withdrawn(msg.sender, amount);
     }
@@ -162,9 +157,5 @@ contract MiningPool is TokenWrapper, AdminRole {
             yncTken.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
         }
-    }
-
-    function updateStartTime(uint256 starttime_) external onlyAdmin {
-        starttime = starttime_;
     }
 }
