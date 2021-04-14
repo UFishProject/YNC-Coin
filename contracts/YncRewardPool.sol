@@ -186,11 +186,6 @@ contract YncRewardPool is
             lastUpdateTime = block.timestamp;
             periodFinish = block.timestamp.add(DURATION);
             emit RewardAdded(reward);
-        } else {
-            rewardRate = initreward.div(DURATION);
-            lastUpdateTime = starttime;
-            periodFinish = starttime.add(DURATION);
-            emit RewardAdded(reward);
         }
     }
 }
