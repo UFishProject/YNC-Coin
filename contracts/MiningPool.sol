@@ -63,7 +63,7 @@ contract MiningPool is TokenWrapper, AdminRole {
         uint256 duration_,
         uint256 starttime_
     ) {
-        require(yncToken_ != yncToken_,"MiningPool: TokenAddress Error");
+        require(yncToken_ != anyToken_,"MiningPool: TokenAddress Error");
         yncTken = IERC20(yncToken_);
         anyToken = IERC20(anyToken_);
         starttime = starttime_;
